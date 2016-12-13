@@ -1,0 +1,162 @@
+package com.sample
+ 
+import com.sample.DroolsTest.Samochod;
+import com.sample.DroolsTest.Klient;
+import com.sample.DroolsTest.Rezerwacja;
+import com.sample.DroolsTest.Zwrot;
+	
+rule "Taryfa A" //przypisanie dziennego kosztu wynajmu samochodu
+	when
+		r: Rezerwacja ( typ == "A" )
+	then
+		r.taryfaM = 59;
+		r.taryfaD = 69;
+end
+
+rule "Taryfa B" //przypisanie dziennego kosztu wynajmu samochodu
+	when
+		r: Rezerwacja ( typ == "B" )
+	then
+		r.taryfaM = 69;
+		r.taryfaD = 79;
+end
+
+rule "Taryfa D" //przypisanie dziennego kosztu wynajmu samochodu
+	when
+		r: Rezerwacja ( typ == "D" )
+	then
+		r.taryfaM = 79;
+		r.taryfaD = 89;
+end
+
+rule "Znajdz auto A" //poszukiwanie samochodu typu A (je¿eli chcemy zarezerwowaæ typ A)
+	when
+		s : Samochod ( typ == "A" )
+		r : Rezerwacja ( typ == "A" && samochod == null )
+		not ( exists Rezerwacja( klient != r.klient, samochod == s, sprawdzZajetosc( r ) == true )) //wykluczenie wypo¿yczenia tego samego pojazdu w konfliktowym terminie
+		not ( exists Rezerwacja( klient == r.klient, this != r, sprawdzZajetosc( r ) == true )) //wykluczenie wypo¿yczenia przez klienta 2 samochodów w konfliktowym terminie
+	then
+		r.samochod = s;
+		r.zatwierdzona = true;
+		System.out.println("Klient " + r.klient.id + ": Znaleziono samochod A.");
+		update(r);
+end
+
+rule "Znajdz auto B" //poszukiwanie samochodu typu B (je¿eli chcemy zarezerwowaæ typ B lub A - wymuszenie je¿eli brak po¿¹danego typu)
+	when
+		s : Samochod ( typ == "B")
+		r : Rezerwacja ( (typ == "B" || zatwierdzona == false) && samochod == null )
+		not ( exists Rezerwacja( klient != r.klient, samochod == s, sprawdzZajetosc( r ) == true ))
+		not ( exists Rezerwacja( klient == r.klient, this != r, sprawdzZajetosc( r ) == true ))
+	then
+		r.samochod = s;
+		r.zatwierdzona = true;
+		System.out.println("Klient " + r.klient.id + ": Znaleziono samochod B.");
+		update(r);
+end
+
+rule "Znajdz auto D" //poszukiwanie samochodu typu D (je¿eli chcemy zarezerwowaæ typ D lub B lub A - wymuszenie je¿eli brak po¿¹danego typu))
+	when
+		s : Samochod ( typ == "D" )
+		r : Rezerwacja ( (typ == "D" || zatwierdzona == false) && samochod == null )
+		not ( exists Rezerwacja( klient != r.klient, samochod == s, sprawdzZajetosc( r ) == true ))
+		not ( exists Rezerwacja( klient == r.klient, this != r, sprawdzZajetosc( r ) == true ))
+	then
+		r.samochod = s;
+		r.zatwierdzona = true;
+		System.out.println("Klient " + r.klient.id + ": Znaleziono samochod D.");
+		update(r);
+end
+
+rule "Nie znaleziono samochodu" //Anulowanie rezerwacji z powodu braku dostêpnych pojazdów lub pokrywaj¹cych siê terminów wypo¿yczenia
+	when
+		z : Zwrot ( rezerwacja.zatwierdzona == false )
+	then
+		System.out.println("Klient " + z.rezerwacja.klient.id + ": Nie uda³o siê zarezerwowaæ samochodu.");
+		retract(z);
+end
+	
+rule "Fotelik" //Dodanie op³aty za wypo¿yczenie fotelika
+	when
+		r : Rezerwacja( fotelik == true )
+	then
+		r.oplata += 10;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano op³ate za fotelik.");
+end
+
+rule "Bagaznik" //Dodanie op³aty za wypo¿yczenie baga¿nika
+	when
+		r : Rezerwacja( bagaznik == true )
+	then
+		r.oplata += 10;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano op³ate za bagaznik.");
+end
+
+rule "Czlonek" //Obni¿enie op³aty za wypo¿yczenie dziêki programowi partnerskiemu
+	when
+		r : Rezerwacja( ( klient.czlonek == true ) && ( bagaznik == true || fotelik == true ) )
+	then
+		r.oplata -= 10;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Obnizono oplate za wypo¿yczenie dziêki programowi partnerskiemu.");
+end
+
+rule "Znizka" //Przypisanie op³aty za kilometr oraz dzienne op³aty za wypo¿yczenie ze zni¿k¹ (wypozyczenie powy¿ej 3 dni)
+	when
+		r : Rezerwacja( czasRezerwacji > 3 && samochod != null  )
+	then
+		r.oplataKM = 0.5;
+		r.taryfa = r.taryfaM;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Przypisano oplate za KM i taryfe (>3): " + r.taryfaM + " dla samochodu: " + r.samochod.typ.);
+end
+
+rule "Bez znizki" //Przypisanie op³aty za kilometr oraz dzienne op³aty za wypo¿yczenie ze zni¿k¹ (wypozyczenie do 3 dni)
+	when
+		r : Rezerwacja( czasRezerwacji > 0 && czasRezerwacji <= 3 && samochod != null )
+	then
+		r.oplataKM = 1;
+		r.taryfa = r.taryfaD;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Przypisano oplate za KM i taryfe (1-3): " + r.taryfaD + " dla samochodu: " + r.samochod.typ.);
+end
+
+rule "Op³ata przy rezerwacji" //Naliczenie op³aty za rezerwacjê
+	when
+		z : Zwrot( rezerwacja.oplataKM > 0 )
+	then
+		z.rezerwacja.oplata += z.rezerwacja.czasRezerwacji*z.rezerwacja.taryfa;
+		System.out.println("Klient " + z.rezerwacja.klient.id + ": Pobrano op³ate przy rezerwacji: " + z.rezerwacja.oplata + " z³.");
+end
+
+rule "Kolpaki" //Naliczenie kary za brak ko³paka/ów
+	when
+		z : Zwrot( kolpaki > 0 )
+	then
+		z.dodatkoweKoszty += 20*z.kolpaki;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano kare za " + z.kolpaki + " zgubione kolpaki.");
+end
+
+rule "Dowod" //Naliczenie kary za brak dowodu rejestracyjnego lub polisy ubezpieczeniowej
+	when
+		z : Zwrot( dowod == true )
+	then
+		z.dodatkoweKoszty += 500;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano kare za dowod.");
+end
+
+rule "Kara" //Naliczenie kary za opó¿nienie w oddaniu samochodu
+	when
+		z : Zwrot( czasWypozyczenia > rezerwacja.czasRezerwacji )
+	then
+		z.dodatkoweKoszty += (z.czasWypozyczenia - z.rezerwacja.czasRezerwacji)*3*z.rezerwacja.taryfa;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano kare za opozniony zwrot: " + (z.czasWypozyczenia - z.rezerwacja.czasRezerwacji)*3*z.rezerwacja.taryfa + " z³.");
+end
+
+rule "Koszt ca³kowity" //Naliczenie ca³kowitego kosztu wypo¿yczenia samochodu
+	when
+		z : Zwrot()
+	then
+		z.dodatkoweKoszty += z.licznik*z.rezerwacja.oplataKM;
+		//System.out.println("Klient " + z.rezerwacja.klient.id + ": Dodano oplate za KM " + z.licznik*z.rezerwacja.oplataKM + " z³.");
+		z.rezerwacja.oplata += z.dodatkoweKoszty;
+		System.out.println("Klient " + z.rezerwacja.klient.id + ": Pobrano op³atê przy zwrocie: " + z.dodatkoweKoszty + " z³.");
+		System.out.println("Klient " + z.rezerwacja.klient.id + ": Ostateczny koszt us³ugi wyniós³: " + z.rezerwacja.oplata + " z³.");
+end
