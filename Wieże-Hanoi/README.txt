@@ -1,2 +1,2 @@
-Wieże Hanoi
+Hanoi Towers
 Project in PDDL
